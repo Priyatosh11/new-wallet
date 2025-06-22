@@ -41,7 +41,7 @@ Create a `.env` file with the following variables:
 DATABASE_URL=postgres://postgres:1234@localhost:5432/newWallet
 JWT_SECRET=your_jwt_secret
 PORT=4000
-CURRENCY_API_KEY=cur_live_n9z65IUGFkEtgk1TjnCEiHURjLfKAOXo7RBRNjix
+CURRENCY_API_KEY=<your_api_key>
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 ```
 
