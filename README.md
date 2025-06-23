@@ -38,11 +38,11 @@ This is a backend service simulating a digital wallet system built with Node.js,
 Create a `.env` file with the following variables:
 
 ```
-DATABASE_URL=postgres://postgres:1234@localhost:5432/newWallet
+DATABASE_URL=postgres://<db_owner>:<db_password>@localhost:5432/<db_name>
 JWT_SECRET=your_jwt_secret
 PORT=4000
 CURRENCY_API_KEY=<your_api_key>
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
 ```
 
 ---
