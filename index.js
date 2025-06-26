@@ -1,24 +1,16 @@
-require('dotenv').config();
 const express = require('express');
-const pool = require('./db');
-
-const app = express();
-app.use(express.json());
-
-// Basic route to check server status
-app.get('/', (req, res) => {
-  res.json({ message: 'Digital Wallet API is running' });
-});
-
-const { router: userRoutes } = require('./routes/user');
+const cookieParser = require('cookie-parser');
+const userRoutes = require('./routes/user').router;
 const productRoutes = require('./routes/product');
+const app = express();
 
-app.use('/', userRoutes);
-app.use('/', productRoutes);
+app.use(express.json());
+app.use(cookieParser());
 
-const PORT = process.env.PORT || 4000;
+app.use('/user', userRoutes);
+app.use('/product', productRoutes);
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-module.exports = { app, pool };

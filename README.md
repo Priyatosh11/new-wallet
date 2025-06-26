@@ -1,196 +1,147 @@
-# New Wallet Backend Service
+# New Wallet API
 
-This is a backend service simulating a digital wallet system built with Node.js, Express, and PostgreSQL. It supports user registration, authentication, wallet funding, payments, transaction history, product catalog, and product purchases. Additionally, it integrates with a Telegram bot to send transaction alert messages to users.
+## Overview
 
----
-
-## Features
-
-- **User Registration** with password hashing and mobile number registration.
-- **Basic Authentication** for protected endpoints.
-- **Fund Account**: Deposit money into your wallet.
-- **Pay Another User**: Transfer money to other registered users.
-- **Check Balance**: View your wallet balance, optionally converted to other currencies.
-- **Transaction History**: View your transaction statements.
-- **Product Catalog**: Add and list products.
-- **Buy Products**: Purchase products using wallet balance.
-- **Telegram Bot Integration**: Receive transaction alert messages on Telegram.
+This API provides user registration, authentication, and wallet transaction functionalities. It uses JWT (JSON Web Tokens) for secure authentication with access tokens and refresh tokens to maintain user sessions securely.
 
 ---
 
-## Telegram Bot Integration
+## API Endpoints
 
-- The Telegram bot username is: `@Ragnar113_bot`
-- Registered users can link their Telegram account to their wallet by:
-  1. Opening a chat with the bot in the Telegram app.
-  2. Sending the command: `/start <your_mobile_number>`
-- The backend verifies the mobile number and links the Telegram chat ID to the user.
-- After linking, users receive real-time transaction alert messages on their Telegram app for:
-  - Funds added to their wallet.
-  - Payments sent or received.
-- Each Telegram account can only be linked to one user.
-- Multiple users can link their own Telegram accounts independently.
+### 1. User Registration
+
+- **URL:** `/user/register`
+- **Method:** POST
+- **Description:** Registers a new user with username, password, and mobile number.
+- **Request Body:**
+  ```json
+  {
+    "username": "string",
+    "password": "string",
+    "mobile": "string"
+  }
+  ```
+- **Response:**
+  - 201 Created on success
+  - 400 Bad Request if username or mobile already exists or missing fields
+
+---
+
+### 2. User Login
+
+- **URL:** `/user/login`
+- **Method:** POST
+- **Description:** Authenticates user credentials and issues JWT access and refresh tokens.
+- **Request Body:**
+  ```json
+  {
+    "username": "string",
+    "password": "string"
+  }
+  ```
+- **Response:**
+  - JSON containing `accessToken` (JWT access token)
+  - Sets HTTP-only cookie `refreshToken` for session management
+
+---
+
+### 3. Refresh Access Token
+
+- **URL:** `/user/refresh-token`
+- **Method:** POST
+- **Description:** Uses the refresh token cookie to issue a new access token without requiring login.
+- **Request:** Must include the HTTP-only `refreshToken` cookie.
+- **Response:**
+  - JSON containing new `accessToken`
+
+---
+
+### 4. Logout
+
+- **URL:** `/user/logout`
+- **Method:** POST
+- **Description:** Logs out the user by invalidating the access token and removing the refresh token cookie.
+- **Request:** Must include `Authorization` header with access token and `refreshToken` cookie.
+- **Response:**
+  - Confirmation message on successful logout
+
+---
+
+### 5. Protected Wallet Endpoints
+
+All the following endpoints require a valid JWT access token in the `Authorization` header (`Bearer <token>`):
+
+- **Fund Account:** `/user/fund` (POST) - Add funds to user wallet.
+- **Pay Another User:** `/user/pay` (POST) - Transfer funds to another user.
+- **Check Balance:** `/user/bal` (GET) - Get current balance, optionally converted to another currency.
+- **View Transaction History:** `/user/stmt` (GET) - Get transaction statements.
+- **Delete User Account:** `/user/user` (DELETE) - Delete user and related transactions.
+
+---
+
+### 6. Product Endpoints
+
+These endpoints handle product-related operations:
+
+- **Add Product:** `/product/product` (POST)
+  - Adds a new product.
+  - Requires a valid JWT access token in the `Authorization` header.
+  - Request body should include `name`, `price`, and optional `description`.
+- **Get All Products:** `/product/product` (GET)
+  - Retrieves a list of all products.
+- **Buy Product:** `/product/buy` (POST)
+  - Allows a user to purchase a product.
+  - Requires a valid JWT access token in the `Authorization` header.
+  - Request body should include `product_id`.
+
+---
+
+## JWT and Refresh Token Implementation
+
+- **Access Token:**
+  - Short-lived JWT (default 1 hour expiry).
+  - Contains user ID and username.
+  - Signed with `ACCESS_TOKEN_SECRET` from environment variables.
+  - Sent in response body on login and refresh.
+  - Used in `Authorization` header for protected API requests.
+
+- **Refresh Token:**
+  - Long-lived JWT (default 7 days expiry).
+  - Contains user ID and username.
+  - Signed with `REFRESH_TOKEN_SECRET` from environment variables.
+  - Stored securely as an HTTP-only cookie (`refreshToken`).
+  - Used to obtain new access tokens without re-login.
+  - Stored server-side in a Set (`refreshTokenStore`) to track valid tokens.
+  - Removed from store on logout to invalidate.
+
+- **Security Measures:**
+  - Refresh token stored in HTTP-only cookie to prevent JavaScript access and XSS attacks.
+  - `sameSite: 'strict'` cookie attribute to mitigate CSRF attacks.
+  - Access tokens are blacklisted on logout to prevent reuse.
+  - Secrets are stored in environment variables and never exposed to clients.
 
 ---
 
 ## Environment Variables
 
-Create a `.env` file with the following variables:
-
-```
-DATABASE_URL=postgres://<db_owner>:<db_password>@localhost:5432/<db_name>
-JWT_SECRET=your_jwt_secret
-PORT=4000
-CURRENCY_API_KEY=<your_api_key>
-TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
-```
+- `ACCESS_TOKEN_SECRET` - Secret key for signing access tokens.
+- `REFRESH_TOKEN_SECRET` - Secret key for signing refresh tokens.
+- `ACCESS_TOKEN_EXPIRY` - Access token expiry duration (e.g., `1h`).
+- `REFRESH_TOKEN_EXPIRY` - Refresh token expiry duration (e.g., `7d`).
+- `CURRENCY_API_KEY` - API key for currency conversion service.
+- `TELEGRAM_BOT_TOKEN` - Token for Telegram bot integration.
+- `NODE_ENV` - Set to `production` in production environment to enable secure cookies.
 
 ---
 
-## Installation
+## How to Use
 
-1. Clone the repository.
-2. Run `npm install` to install dependencies.
-3. Set up PostgreSQL database and run the provided `schema.sql` to create tables.
-4. Create `.env` file with the above variables.
-5. Start the server with `npm run dev` (requires nodemon) or `npm start`.
-
----
-
-## API Endpoints and Testing
-
-### 1. Register User
-
-- **Endpoint:** `POST /register`
-- **Body:**
-  ```json
-  {
-    "username": "ashu",
-    "password": "hunter2",
-    "mobile": "7008437393"
-  }
-  ```
-- **Response:** `201 Created` on success.
-
-### 2. Fund Account
-
-- **Endpoint:** `POST /fund`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Body:**
-  ```json
-  {
-    "amt": 10000
-  }
-  ```
-- **Response:**
-  ```json
-  {
-    "balance": 10000
-  }
-  ```
-
-### 3. Pay Another User
-
-- **Endpoint:** `POST /pay`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Body:**
-  ```json
-  {
-    "to": "priya",
-    "amt": 100
-  }
-  ```
-- **Response:**
-  ```json
-  {
-    "balance": 9900
-  }
-  ```
-- **Failure:** `400 Bad Request` if insufficient funds or recipient does not exist.
-
-### 4. Check Balance (Optional Currency)
-
-- **Endpoint:** `GET /bal?currency=USD`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Response:**
-  ```json
-  {
-    "balance": 120.35,
-    "currency": "USD"
-  }
-  ```
-
-### 5. View Transaction History
-
-- **Endpoint:** `GET /stmt`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Response:** List of transactions in reverse chronological order.
-
-### 6. Add Product
-
-- **Endpoint:** `POST /product`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Body:**
-  ```json
-  {
-    "name": "Wireless Mouse",
-    "price": 599,
-    "description": "2.4 GHz wireless mouse with USB receiver"
-  }
-  ```
-- **Response:** `201 Created` with product ID.
-
-### 7. List All Products
-
-- **Endpoint:** `GET /product`
-- **Response:** List of all products.
-
-### 8. Buy a Product
-
-- **Endpoint:** `POST /buy`
-- **Headers:** `Authorization: Basic <base64(username:password)>`
-- **Body:**
-  ```json
-  {
-    "product_id": 1
-  }
-  ```
-- **Response:**
-  ```json
-  {
-    "message": "Product purchased",
-    "balance": 9301
-  }
-  ```
-- **Failure:** `400 Bad Request` if insufficient balance or invalid product.
+1. Register a new user via `/user/register`.
+2. Login via `/user/login` to receive access token and refresh token cookie.
+3. Use the access token in `Authorization` header to access protected endpoints.
+4. When access token expires, call `/user/refresh-token` to get a new access token using the refresh token cookie.
+5. Logout via `/user/logout` to invalidate tokens.
 
 ---
 
-## Telegram Bot Usage
-
-- Search for `@Ragnar113_bot` in your Telegram app.
-- Start a chat and send `/start <your_mobile_number>` to link your Telegram account.
-- Once linked, you will receive transaction alert messages for your wallet activities.
-
----
-
-## Testing Instructions
-
-- Use tools like Postman or Curl to test API endpoints.
-- For protected endpoints, include Basic Auth header with base64 encoded `username:password`.
-- Test user registration with mobile number.
-- Link Telegram accounts by sending `/start <mobile_number>` from Telegram.
-- Verify transaction notifications are received on Telegram for both sender and receiver if both have linked accounts.
-- Test all endpoints for happy paths and error cases.
-
----
-
-## Notes
-
-- Ensure your PostgreSQL database is running and accessible.
-- The Telegram bot must be running and polling to receive commands.
-- Currency conversion uses https://currencyapi.com with the provided API key.
-
----
-
-If you need help with any setup or testing, feel free to ask.
+This setup ensures secure, stateless authentication with token expiration and revocation, protecting user sessions effectively.

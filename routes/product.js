@@ -1,14 +1,11 @@
 const express = require('express');
-const authenticate = require('../middleware/auth');
+const { jwtAuth } = require('../middleware/jwtAuth');
 const pool = require('../db');
 const { recordTransaction } = require('./user');
 
 const router = express.Router();
 
-
-
-// Add Product
-router.post('/product', authenticate, async (req, res) => {
+router.post('/product', jwtAuth, async (req, res) => {
   const { name, price, description } = req.body;
   if (!name || typeof price !== 'number' || price <= 0) {
     return res.status(400).json({ error: 'Name and positive price are required' });
@@ -25,7 +22,6 @@ router.post('/product', authenticate, async (req, res) => {
   }
 });
 
-// List All Products
 router.get('/product', async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name, price, description FROM products ORDER BY id');
@@ -36,8 +32,7 @@ router.get('/product', async (req, res) => {
   }
 });
 
-// Buy a Product
-router.post('/buy', authenticate, async (req, res) => {
+router.post('/buy', jwtAuth, async (req, res) => {
   const { product_id } = req.body;
   if (!product_id) {
     return res.status(400).json({ error: 'Product ID is required' });
@@ -77,6 +72,5 @@ router.post('/buy', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 module.exports = router;

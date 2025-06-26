@@ -2,7 +2,8 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const axios = require('axios');
-const authenticate = require('../middleware/auth');
+const { jwtAuth, refreshTokenStore } = require('../middleware/jwtAuth');
+const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const TelegramBot = require('node-telegram-bot-api');
 
@@ -11,11 +12,19 @@ const router = express.Router();
 const CURRENCY_API_KEY = process.env.CURRENCY_API_KEY;
 const CURRENCY_API_URL = 'https://api.currencyapi.com/v3/latest';
 
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'youraccesstokensecret';
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'yourrefreshtokensecret';
+
+const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d'; // refresh token expiry
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '1h'; // access token expiry
+
+/* Removed local refreshTokens variable to ensure shared state is used dynamically */
+
 const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
 let telegramBot;
 
 if (telegramBotToken) {
-  telegramBot = new TelegramBot(telegramBotToken, { polling: true });
+  telegramBot = new TelegramBot(telegramBotToken, { polling: true }); //polling true means it will continuously check for new messages
 
   telegramBot.onText(/\/start (\d{10})/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -73,6 +82,75 @@ module.exports = {
   recordTransaction
 };
 
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const user = result.rows[0];
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const userPayload = { id: user.id, username: user.username };
+    const accessToken = jwt.sign(userPayload, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    const refreshToken = jwt.sign(userPayload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+refreshTokenStore.add(refreshToken);
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    res.json({ accessToken });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/refresh-token', (req, res) => {
+const refreshToken = req.cookies.refreshToken;
+if (!refreshToken) {
+  return res.status(401).json({ error: 'Refresh token required' });
+}
+if (!refreshTokenStore.has(refreshToken)) {
+  return res.status(403).json({ error: 'Invalid refresh token' });
+}
+  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired refresh token' });
+    }
+    const userPayload = { id: user.id, username: user.username };
+    const accessToken = jwt.sign(userPayload, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    res.json({ accessToken });
+  });
+});
+
+const { addBlacklistedAccessToken } = require('../middleware/jwtAuth');
+
+router.post('/logout', (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+  const authHeader = req.headers['authorization'];
+  const accessToken = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+refreshTokenStore.delete(refreshToken);
+
+  if (accessToken) {
+    addBlacklistedAccessToken(accessToken);
+  }
+
+  res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production' });
+  res.json({ message: 'Logged out successfully' });
+});
+
 async function recordTransaction(userId, kind, amt, updated_bal) {
   await pool.query(
     'INSERT INTO transactions (user_id, kind, amt, updated_bal) VALUES ($1, $2, $3, $4)',
@@ -107,7 +185,7 @@ router.post('/register', async (req, res) => {
 });
 
 // 2. Fund Account
-router.post('/fund', authenticate, async (req, res) => {
+router.post('/fund', jwtAuth, async (req, res) => {
   const { amt } = req.body;
   if (typeof amt !== 'number' || amt <= 0) {
     return res.status(400).json({ error: 'Amount must be a positive number' });
@@ -126,7 +204,7 @@ router.post('/fund', authenticate, async (req, res) => {
 });
 
 // 3. Pay Another User
-router.post('/pay', authenticate, async (req, res) => {
+router.post('/pay', jwtAuth, async (req, res) => {
   const { to, amt } = req.body;
   if (!to || typeof amt !== 'number' || amt <= 0) {
     return res.status(400).json({ error: 'Recipient and positive amount required' });
@@ -165,7 +243,7 @@ router.post('/pay', authenticate, async (req, res) => {
 });
 
 // 4. Check Balance (with optional currency)
-router.get('/bal', authenticate, async (req, res) => {
+router.get('/bal', jwtAuth, async (req, res) => {
   const currency = req.query.currency;
   try {
     const userRes = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
@@ -194,7 +272,7 @@ router.get('/bal', authenticate, async (req, res) => {
 });
 
 // 5. View Transaction History
-router.get('/stmt', authenticate, async (req, res) => {
+router.get('/stmt', jwtAuth, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT kind, amt, updated_bal, timestamp FROM transactions WHERE user_id = $1 ORDER BY timestamp DESC',
@@ -209,7 +287,7 @@ router.get('/stmt', authenticate, async (req, res) => {
 
   
 // 9. Delete User Account
-router.delete('/user', authenticate, async (req, res) => {
+router.delete('/user', jwtAuth, async (req, res) => {
   try {
     // Delete transactions first due to foreign key constraints
     await pool.query('BEGIN');
