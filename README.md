@@ -72,8 +72,16 @@ This API provides user registration, authentication, and wallet transaction func
 All the following endpoints require a valid JWT access token in the `Authorization` header (`Bearer <token>`):
 
 - **Fund Account:** `/user/fund` (POST) - Add funds to user wallet.
+- **Request Body:**
+```json
+   { "amt": 100 }
+```
 - **Pay Another User:** `/user/pay` (POST) - Transfer funds to another user.
-- **Check Balance:** `/user/bal` (GET) - Get current balance, optionally converted to another currency.
+- **Request Body;**
+```json
+ {"to": "recipientUsername", "amt": 50 }
+```
+- **Check Balance:** `/user/bal?currency=USD`(optional) (GET) - Get current balance, optionally converted to another currency.
 - **View Transaction History:** `/user/stmt` (GET) - Get transaction statements.
 - **Delete User Account:** `/user/user` (DELETE) - Delete user and related transactions.
 
@@ -87,12 +95,19 @@ These endpoints handle product-related operations:
   - Adds a new product.
   - Requires a valid JWT access token in the `Authorization` header.
   - Request body should include `name`, `price`, and optional `description`.
+  - **Request Body:**
+  ```json
+  { "name": "productName", "price": 100, "description": "productDescription" }
+  ```
 - **Get All Products:** `/product/product` (GET)
   - Retrieves a list of all products.
 - **Buy Product:** `/product/buy` (POST)
   - Allows a user to purchase a product.
   - Requires a valid JWT access token in the `Authorization` header.
-  - Request body should include `product_id`.
+  - **Request Body:**
+  ```json
+     { "product_id": 1 }
+  ```
 
 ---
 
